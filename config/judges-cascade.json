@@ -1,0 +1,28 @@
+{
+  "judges": [
+    {
+      "name": "fast-judge",
+      "config": "primary",
+      "protocol": "https",
+      "baseUrl": "api.openai.com/v1",
+      "model": "gpt-4o-mini",
+      "apiKey": "${OPENAI_API_KEY}",
+      "temperature": 0.0,
+      "maxOutputTokens": 2048,
+      "maxRunCostUsd": 5.0
+    },
+    {
+      "name": "deep-judge",
+      "config": "secondary",
+      "protocol": "https",
+      "baseUrl": "api.anthropic.com/v1",
+      "model": "claude-3-5-sonnet-20240620",
+      "apiKey": "${ANTHROPIC_API_KEY}",
+      "temperature": 0.0,
+      "maxOutputTokens": 4096,
+      "maxRunCostUsd": 20.0
+    }
+  ],
+  "failurePolicy": "FAIL_ON_ANY_FLAG",
+  "requireIndependentFamilies": true
+}

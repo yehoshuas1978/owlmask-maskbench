@@ -10,7 +10,8 @@ import java.util.concurrent.Callable;
         description = "Java LLM Masking QA Harness",
         subcommands = {
             JudgePairsCommand.class,
-            BenchmarkPairsCommand.class
+            BenchmarkPairsCommand.class,
+            ExplainCommand.class
         })
 public class MaskBenchCommand implements Callable<Integer> {
 
@@ -74,3 +75,26 @@ class BenchmarkPairsCommand implements Callable<Integer> {
         return 0;
     }
 }
+
+@Command(name = "explain", description = "Show explanations and examples for all maskbench commands")
+class ExplainCommand implements Callable<Integer> {
+    @Override
+    public Integer call() throws Exception {
+        System.out.println("OwlMask MaskBench Commands:");
+        System.out.println("===========================\n");
+        System.out.println("1. judge-pairs");
+        System.out.println("   Explanation: Judges masked pairs using deterministic rules and LLMs.");
+        System.out.println("                Evaluates how well masking was performed by running a cascade");
+        System.out.println("                of LLM judges against provided data pairs.");
+        System.out.println("   Example:     java -jar owlmask-maskbench.jar judge-pairs --pairs=data.csv --format=csv --report-dir=out\n");
+        System.out.println("2. benchmark-pairs");
+        System.out.println("   Explanation: Benchmarks masked pairs using only deterministic rules without LLMs.");
+        System.out.println("                Useful for quick structural or exact-match validations.");
+        System.out.println("   Example:     java -jar owlmask-maskbench.jar benchmark-pairs --pairs=data.jsonl --format=jsonl\n");
+        System.out.println("3. explain");
+        System.out.println("   Explanation: Shows this detailed explanation and examples for the commands.");
+        System.out.println("   Example:     java -jar owlmask-maskbench.jar explain\n");
+        return 0;
+    }
+}
+
