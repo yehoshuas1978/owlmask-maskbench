@@ -8,6 +8,17 @@ The datasets are stored in `texts-to-mask-{lang}.txt` files within the `data` di
 - **Hebrew (`-he.txt`)**
 - **English (`-en.txt`)**
 - **German (`-de.txt`)**
+- **Spanish (`-es.txt`)** *(added 2026-07-24)*
+- **French (`-fr.txt`)** *(added 2026-07-24)*
+- **Italian (`-it.txt`)** *(added 2026-07-24)*
+
+> Note on the 2026-07-24 additions: the Spanish DNI, French NIR/INSEE, and
+> Italian Codice Fiscale values (and es/fr/it IBANs) are generated
+> **checksum-valid**. A checksum-validating masking engine correctly refuses
+> invalid look-alikes, so invalid "IDs" in test data produce false leak flags
+> in residual scans. The original he/en/de identifiers are random-format
+> values (some checksum-invalid) — treat unmasked invalid IDs in those sets
+> as expected precision behavior, not leaks.
 
 To ensure robust evaluation, the dataset is highly diverse. It utilizes randomly generated names, cities, streets, phone numbers, IPs, MAC addresses, IBANs, and national IDs mixed into over 38 structural templates per language.
 
@@ -62,6 +73,8 @@ These records expand the dataset to cover highly specific, high-risk domains tha
 
 ## Legacy Encoding Tests
 
-In addition to the main UTF-8 files, two smaller 100-record files were generated to test how the engine handles non-UTF8 legacy file encodings:
+In addition to the main UTF-8 files, smaller 100-record files were generated to test how the engine handles non-UTF8 legacy file encodings:
 - `texts-to-mask-he-iso8859-8.txt` (ISO-8859-8 Hebrew)
 - `texts-to-mask-de-iso8859-1.txt` (ISO-8859-1 / Latin-1 German)
+- `texts-to-mask-es-iso8859-1.txt`, `texts-to-mask-fr-iso8859-1.txt`,
+  `texts-to-mask-it-iso8859-1.txt` (ISO-8859-1 / Latin-1, added 2026-07-24)

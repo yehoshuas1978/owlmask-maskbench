@@ -19,16 +19,66 @@ de_last_names = ["Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer",
 de_cities = ["Berlin", "München", "Hamburg", "Köln", "Frankfurt", "Stuttgart", "Düsseldorf", "Leipzig", "Dortmund", "Essen"]
 de_streets = ["Hauptstraße", "Schulstraße", "Gartenstraße", "Bahnhofstraße", "Dorfstraße", "Goethestraße", "Schillerstraße", "Lindenstraße", "Berliner Straße", "Ringstraße"]
 
+# --- Spanish Data ---
+es_first_names = ["José", "Antonio", "Manuel", "Francisco", "David", "Juan", "Javier", "Carlos", "Miguel", "Rafael", "María", "Carmen", "Ana", "Isabel", "Laura", "Marta", "Lucía", "Elena", "Sara", "Paula"]
+es_last_names = ["García", "Rodríguez", "González", "Fernández", "López", "Martínez", "Sánchez", "Pérez", "Gómez", "Martín", "Jiménez", "Ruiz", "Hernández", "Díaz", "Moreno"]
+es_cities = ["Madrid", "Barcelona", "Valencia", "Sevilla", "Zaragoza", "Málaga", "Murcia", "Palma", "Bilbao", "Alicante"]
+es_streets = ["Calle Mayor", "Gran Vía", "Calle Alcalá", "Paseo de la Castellana", "Calle Serrano", "Avenida Diagonal", "Calle Toledo", "Rambla de Catalunya", "Calle Princesa", "Paseo del Prado"]
+
+# --- French Data ---
+fr_first_names = ["Jean", "Pierre", "Michel", "Philippe", "Alain", "Nicolas", "Julien", "Thomas", "Marie", "Nathalie", "Isabelle", "Sophie", "Catherine", "Camille", "Julie", "Claire", "Lucas", "Hugo", "Léa", "Emma"]
+fr_last_names = ["Martin", "Bernard", "Dubois", "Robert", "Richard", "Petit", "Durand", "Leroy", "Moreau", "Simon", "Laurent", "Lefebvre", "Michel", "Garnier", "Rousseau"]
+fr_cities = ["Paris", "Marseille", "Lyon", "Toulouse", "Nice", "Nantes", "Strasbourg", "Montpellier", "Bordeaux", "Lille"]
+fr_streets = ["rue de la Paix", "avenue des Champs-Élysées", "rue Victor Hugo", "boulevard Saint-Germain", "rue de Rivoli", "avenue de la République", "rue Nationale", "place de la Bastille", "rue du Commerce", "boulevard Voltaire"]
+
+# --- Italian Data ---
+it_first_names = ["Luca", "Giulia", "Marco", "Sofia", "Alessandro", "Aurora", "Lorenzo", "Martina", "Matteo", "Chiara", "Andrea", "Francesca", "Davide", "Alice", "Simone", "Elena", "Federico", "Sara", "Giovanni", "Valentina"]
+it_last_names = ["Rossi", "Russo", "Ferrari", "Esposito", "Bianchi", "Romano", "Colombo", "Ricci", "Marino", "Greco", "Bruno", "Gallo", "Conti", "De Luca", "Mancini"]
+it_cities = ["Roma", "Milano", "Napoli", "Torino", "Palermo", "Genova", "Bologna", "Firenze", "Bari", "Venezia"]
+it_streets = ["Via Roma", "Corso Italia", "Via Garibaldi", "Piazza Dante", "Via Verdi", "Viale Europa", "Via Manzoni", "Corso Vittorio Emanuele", "Via Nazionale", "Via Milano"]
+
 # --- Generators ---
+# NOTE (2026-07-24): the es/fr/it national IDs and IBANs are generated
+# checksum-VALID on purpose. A checksum-validating engine correctly refuses
+# invalid look-alikes, so invalid "IDs" in test data produce false leak flags
+# in residual scans (observed with the he Teudat-Zehut values in this dataset).
+
+def _es_dni():
+    n = random.randint(10000000, 99999999)
+    return f"{n}{'TRWAGMYFPDXBNJZSQVHLCKE'[n % 23]}"
+
+def _fr_insee():
+    body = (f"{random.choice([1, 2])}{random.randint(50, 99)}{random.randint(1, 12):02d}"
+            f"{random.randint(1, 95):02d}{random.randint(1, 990):03d}{random.randint(1, 999):03d}")
+    key = 97 - int(body) % 97
+    return f"{body}{key:02d}"
+
+def _it_cf():
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    return ("".join(random.choice(letters) for _ in range(6))
+            + f"{random.randint(50, 99)}" + random.choice("ABCDEHLMPRST")
+            + f"{random.randint(1, 28):02d}" + random.choice(letters)
+            + f"{random.randint(100, 999)}" + random.choice(letters))
+
+def _iban_checked(country, bban):
+    num = "".join(str(int(c, 36)) for c in (bban + country + "00"))
+    return f"{country}{98 - int(num) % 97:02d}{bban}"
+
 def gen_id(lang):
     if lang == "he": return "".join([str(random.randint(0, 9)) for _ in range(9)])
     elif lang == "en": return f"{random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(1000, 9999)}"
     elif lang == "de": return f"T{random.randint(10000000, 99999999)}"
+    elif lang == "es": return _es_dni()
+    elif lang == "fr": return _fr_insee()
+    elif lang == "it": return _it_cf()
 
 def gen_phone(lang):
     if lang == "he": return random.choice([f"05{random.randint(0, 9)}-{random.randint(1000000, 9999999)}", f"05{random.randint(0, 9)} {random.randint(100,999)} {random.randint(1000,9999)}"])
     elif lang == "en": return random.choice([f"({random.randint(200, 999)}) {random.randint(200, 999)}-{random.randint(1000, 9999)}", f"+1-{random.randint(200, 999)}-{random.randint(200, 999)}-{random.randint(1000, 9999)}"])
     elif lang == "de": return random.choice([f"+49 151 {random.randint(1000000, 9999999)}", f"0151 {random.randint(1000000, 9999999)}"])
+    elif lang == "es": return random.choice([f"+34 6{random.randint(10, 99)} {random.randint(100, 999)} {random.randint(100, 999)}", f"6{random.randint(10000000, 99999999)}"])
+    elif lang == "fr": return random.choice([f"+33 6 {random.randint(10, 99)} {random.randint(10, 99)} {random.randint(10, 99)} {random.randint(10, 99)}", f"06 {random.randint(10, 99)} {random.randint(10, 99)} {random.randint(10, 99)} {random.randint(10, 99)}"])
+    elif lang == "it": return random.choice([f"+39 3{random.randint(20, 99)} {random.randint(1000000, 9999999)}", f"3{random.randint(20, 99)} {random.randint(1000000, 9999999)}"])
 
 def gen_part_num(): return f"{random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(1000, 9999)}"
 def gen_part_num_he(): return "".join([str(random.randint(0, 9)) for _ in range(9)])
@@ -36,6 +86,12 @@ def gen_dob(): return f"{random.randint(1, 28)}/{random.randint(1, 12)}/{random.
 def gen_ip(): return f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}"
 def gen_mac(): return ":".join([f"{random.randint(0, 255):02x}" for _ in range(6)])
 def gen_iban(lang):
+    if lang == "es":
+        return _iban_checked("ES", f"{random.randint(1000, 9999)}{random.randint(1000, 9999)}{random.randint(10, 99)}{random.randint(0, 9999999999):010d}")
+    if lang == "fr":
+        return _iban_checked("FR", f"{random.randint(10000, 99999)}{random.randint(10000, 99999)}{random.randint(0, 99999999999):011d}{random.randint(10, 99)}")
+    if lang == "it":
+        return _iban_checked("IT", random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + f"{random.randint(10000, 99999)}{random.randint(10000, 99999)}{random.randint(0, 999999999999):012d}")
     prefix = "IL" if lang == "he" else "DE" if lang == "de" else "US"
     return f"{prefix}{random.randint(10, 99)}{random.randint(100, 999)}{random.randint(100000, 999999)}{random.randint(10, 99)}"
 
@@ -218,11 +274,193 @@ de_new_domains = [
     "Flugbestätigung: Passagier {first} {last}, Reisepass #{part_en}. Flug nach {city}. Abflugdatum: {dob}. Notfallkontakt: {phone}." # Travel
 ]
 
+# --- Spanish Templates ---
+es_edge_cases = [
+    "Datos de contacto:\nNombre: {first} {last}\nTeléfono: {phone}\nDNI: {id}",
+    "Por favor llámame al 📞{phone} o escribe a {first}.{last}@example.es 📧.",
+    "<div>Nombre del cliente: <strong>{first} {last}</strong></div><p>Identificador: <span>{id}</span></p>",
+    "https://api.example.es/update?user={first}%20{last}&dni={id}&phone={phone}",
+    "[{first} {last}], ({id}), '{phone}' - datos actualizados en el sistema.",
+    "Empleado\t{first} {last}\tcon DNI\t{id}\tsolicita aprobación.",
+    "NOMBRE: {FIRST} {LAST}!!! NÚMERO: {ID}???",
+]
+
+es_implicit = [
+    "Dejé el paquete con {first} {last} en {street} {num}. Llama al {phone} si hay problemas.",
+    "Aquí está el código que necesitas: {id}. No lo compartas con {first}.",
+    "Oye, los datos son: {first} {last}, {id}, {dob}. Gracias.",
+    "Hablé hoy con {first}. Dijo que lo enviemos a {city} y que le llamemos al {phone}.",
+    "Por favor envía los documentos a {first} {last}, {street} {num}, {city}.",
+    "Quedé con {first} cerca de {street} {num}. Contacté con {first2} en el {phone}.",
+]
+
+es_templates = [
+    "Póliza de seguro de vida de {first} {last}, DNI {id}. Reside en {street} {num}, {city}. Teléfono: {phone}. Fecha de nacimiento: {dob}.",
+    "Parte de accidente. Conductor responsable: {first} {last}, matrícula {num}XYZ{num}. Reside en {city}.",
+    "El cliente {first} {last} solicitó un presupuesto para el seguro del coche. DNI: {id}. Teléfono: {phone}.",
+    "Cliente {first} {last}, correo {first}.{last}@example.es, inició una transferencia desde la IP {ip}.",
+    "El paciente {first} {last} llegó a la clínica. DNI: {id}. Pulso: 80, tensión: 120/80.",
+    "El demandante {first} {last} presentó una demanda contra Mapfre. Número de caso: {num}{num}-{num}.",
+    "Sentencia en el caso {num} - {first} {last} contra el Banco Santander. Se condena al pago de 50.000 €.",
+    "La nueva tarjeta terminada en {num}{num} fue enviada a {street} {num}, {city} a nombre de {first} {last}.",
+    "Informe de alta - El paciente {first} {last} fue dado de alta. Enviar documentos a: {street} {num}, {city}.",
+    "Receta de medicación crónica entregada a la paciente {first} {last} con DNI {id}.",
+    "Según la política de la empresa, solo se permite fumar en las zonas habilitadas.",
+    "La ley de protección al consumidor obliga a mostrar los precios con IVA incluido.",
+    "El plazo de gracia termina en mayo.",
+    "Esperamos terminar el proyecto a tiempo y dentro del presupuesto.",
+    "La referencia {part_en} está agotada actualmente.",
+    "Se espera mal tiempo mañana en toda la península. Eviten desplazamientos.",
+    "The customer {en_first} {en_last} called about his account. He lives in {en_city}.",
+    "La dirección MAC del equipo de {first} es {mac} y se conecta desde la IP {ip}.",
+    "Se realizó una transferencia al IBAN {iban} por parte de {first}.",
+]
+
+es_longform = [
+    "CONDICIONES GENERALES DEL CONTRATO DE ARRENDAMIENTO: Reunidos de una parte el arrendador, propietario registral de la vivienda situada en {street} {num}, {city}; y de otra el arrendatario {first} {last}, con DNI {id}, interesado en arrendar la vivienda por un período de 12 meses. La renta mensual se fija en 900 €. Para consultas, contactar en el teléfono {phone}.",
+    "La diabetes tipo 2 es una enfermedad metabólica caracterizada por niveles elevados de glucosa en sangre. En una revisión rutinaria en nuestro centro de {city}, el paciente {first} {last} (DNI: {id}) presentó valores anómalos. El paciente, con domicilio en {street} {num}, fue informado de los resultados. Más información: {phone}.",
+    "POLÍTICA DE PRIVACIDAD: Nos tomamos muy en serio la protección de sus datos personales conforme al RGPD. Cuando el usuario {first} {last} visita nuestro sitio web, registramos la dirección IP {ip} y la fecha de acceso. No cedemos sus datos, incluida la dirección de {street} {num}, a terceros. Los pagos pueden realizarse a la cuenta IBAN {iban}. Contacto: {phone}.",
+    "Póliza de seguro a todo riesgo del automóvil: la presente póliza cubre daños accidentales, robo e incendio según las condiciones generales. El tomador del seguro, {first} {last} (DNI: {id}), está autorizado a presentar reclamaciones. El vehículo asegurado está domiciliado en {street} {num}, {city}. En caso de siniestro, llame a atención al cliente: {phone}.",
+]
+
+es_new_domains = [
+    "Currículum: Candidato {first} {last}, graduado por la universidad. Antiguo empleado de TechCorp. Referencias: {first2} {last2}, teléfono: {phone}.",
+    "Error del servidor: 500 Internal Server Error. IP de la petición: {ip}. Usuario conectado: {first}.{last}. Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.",
+    "El pedido #{num}{num}{num} ha sido enviado. Dirección de entrega: {street} {num}, {city}. Destinatario: {first} {last}. Teléfono del mensajero: {phone}.",
+    "Evaluación del alumno {first} {last} (DNI: {id}). Se ruega a los padres asistir a la reunión. Dirección registrada: {street} {num}, {city}.",
+    "Agencia Tributaria: notificación de liquidación del ejercicio 2025. Contribuyente: {first} {last}. NIF: {id}. Plazo de pago hasta el {dob}.",
+    "Confirmación de vuelo: pasajero {first} {last}, pasaporte n.º {part_en}. Vuelo a {en_city}. Fecha de salida: {dob}. Contacto de emergencia: {phone}.",
+]
+
+# --- French Templates ---
+fr_edge_cases = [
+    "Coordonnées :\nNom : {first} {last}\nTéléphone : {phone}\nNIR : {id}",
+    "Merci de me rappeler au 📞{phone} ou par mail à {first}.{last}@example.fr 📧.",
+    "<div>Nom du client : <strong>{first} {last}</strong></div><p>Identifiant : <span>{id}</span></p>",
+    "https://api.example.fr/update?user={first}%20{last}&nir={id}&phone={phone}",
+    "[{first} {last}], ({id}), '{phone}' - informations mises à jour dans le système.",
+    "Employé\t{first} {last}\tavec le NIR\t{id}\tdemande une validation.",
+    "NOM : {FIRST} {LAST}!!! NUMÉRO : {ID}???",
+]
+
+fr_implicit = [
+    "J'ai laissé le colis chez {first} {last}, {num} {street}. Appelez le {phone} en cas de problème.",
+    "Voici le code dont tu as besoin : {id}. Ne le partage pas avec {first}.",
+    "Salut, les infos sont : {first} {last}, {id}, {dob}. Merci.",
+    "J'ai parlé à {first} aujourd'hui. Il a dit de transmettre à {city} et de le joindre au {phone}.",
+    "Merci d'envoyer les documents à {first} {last}, {num} {street}, {city}.",
+    "J'ai retrouvé {first} près du {num} {street}. J'ai joint {first2} au {phone}.",
+]
+
+fr_templates = [
+    "Contrat d'assurance-vie de {first} {last}, NIR {id}. Domicilié au {num} {street}, {city}. Téléphone : {phone}. Date de naissance : {dob}.",
+    "Constat d'accident. Conducteur responsable : {first} {last}, immatriculation {num}XYZ{num}. Domicilié à {city}.",
+    "Le client {first} {last} a demandé un devis d'assurance auto. NIR : {id}. Téléphone : {phone}.",
+    "Client {first} {last}, e-mail {first}.{last}@example.fr, a initié un virement depuis l'IP {ip}.",
+    "Le patient {first} {last} est arrivé à la clinique. NIR : {id}. Pouls : 80, tension : 120/80.",
+    "Le demandeur {first} {last} a déposé plainte contre AXA. Numéro de dossier : {num}{num}-{num}.",
+    "Jugement dans l'affaire {num} - {first} {last} contre BNP Paribas. Le défendeur est condamné à verser 50 000 €.",
+    "La nouvelle carte se terminant par {num}{num} a été envoyée au {num} {street}, {city} pour {first} {last}.",
+    "Compte rendu de sortie - Le patient {first} {last} est sorti. Envoyer les documents au : {num} {street}, {city}.",
+    "Ordonnance de médicaments chroniques remise à la patiente {first} {last}, NIR {id}.",
+    "Selon le règlement intérieur, il est interdit de fumer en dehors des zones prévues.",
+    "Le code de la consommation impose l'affichage des prix TTC.",
+    "Le délai de grâce se termine en mai.",
+    "Nous espérons terminer le projet dans les délais et le budget.",
+    "La référence {part_en} est actuellement en rupture de stock.",
+    "Fortes intempéries attendues demain dans tout le pays. Évitez les déplacements.",
+    "The customer {en_first} {en_last} called about his account. He lives in {en_city}.",
+    "L'adresse MAC du poste de {first} est {mac}, connecté depuis l'IP {ip}.",
+    "Un virement vers l'IBAN {iban} a été initié par {first}.",
+]
+
+fr_longform = [
+    "CONDITIONS GÉNÉRALES DE LOCATION : Entre les soussignés, le bailleur, propriétaire du logement situé au {num} {street}, {city} ; et le locataire {first} {last}, NIR {id}, souhaitant louer le logement pour une durée de 12 mois. Le loyer mensuel est fixé à 900 €. Pour toute question, contacter le {phone}.",
+    "Le diabète de type 2 est une maladie métabolique caractérisée par une glycémie élevée. Lors d'un contrôle de routine dans notre centre de {city}, le patient {first} {last} (NIR : {id}) a présenté des valeurs anormales. Le patient, domicilié au {num} {street}, a été informé des résultats. Renseignements : {phone}.",
+    "POLITIQUE DE CONFIDENTIALITÉ : Conformément au RGPD, nous protégeons vos données personnelles. Lorsque l'utilisateur {first} {last} visite notre site, nous enregistrons l'adresse IP {ip} ainsi que la date d'accès. Nous ne transmettons pas vos données, y compris l'adresse au {num} {street}, à des tiers. Les paiements peuvent être effectués sur l'IBAN {iban}. Contact : {phone}.",
+    "Contrat d'assurance automobile tous risques : la présente police couvre les dommages accidentels, le vol et l'incendie selon les conditions générales. Le souscripteur, {first} {last} (NIR : {id}), est habilité à déclarer un sinistre. Le véhicule assuré est stationné au {num} {street}, {city}. En cas de sinistre, contactez votre agent au {phone}.",
+]
+
+fr_new_domains = [
+    "CV : Candidat {first} {last}, diplômé de l'université. Ancien salarié de TechCorp. Références : {first2} {last2}, téléphone : {phone}.",
+    "Erreur serveur : 500 Internal Server Error. IP de la requête : {ip}. Utilisateur connecté : {first}.{last}. Token : eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.",
+    "La commande n°{num}{num}{num} a été expédiée. Adresse de livraison : {num} {street}, {city}. Destinataire : {first} {last}. Téléphone du livreur : {phone}.",
+    "Bulletin de l'élève {first} {last} (NIR : {id}). Les parents sont priés d'assister à la réunion. Adresse enregistrée : {num} {street}, {city}.",
+    "Direction générale des Finances publiques : avis d'imposition 2025. Contribuable : {first} {last}. NIR : {id}. À régler avant le {dob}.",
+    "Confirmation de vol : passager {first} {last}, passeport n°{part_en}. Vol vers {en_city}. Départ : {dob}. Contact d'urgence : {phone}.",
+]
+
+# --- Italian Templates ---
+it_edge_cases = [
+    "Dati di contatto:\nNome: {first} {last}\nTelefono: {phone}\nCodice fiscale: {id}",
+    "Per favore richiamami al 📞{phone} o scrivi a {first}.{last}@example.it 📧.",
+    "<div>Nome cliente: <strong>{first} {last}</strong></div><p>Identificativo: <span>{id}</span></p>",
+    "https://api.example.it/update?user={first}%20{last}&cf={id}&phone={phone}",
+    "[{first} {last}], ({id}), '{phone}' - dati appena aggiornati nel sistema.",
+    "Dipendente\t{first} {last}\tcon CF\t{id}\trichiede approvazione.",
+    "NOME: {FIRST} {LAST}!!! NUMERO: {ID}???",
+]
+
+it_implicit = [
+    "Ho lasciato il pacco a {first} {last} in {street} {num}. Chiama il {phone} in caso di problemi.",
+    "Ecco il codice che ti serve: {id}. Non condividerlo con {first}.",
+    "Ciao, i dati sono: {first} {last}, {id}, {dob}. Grazie.",
+    "Ho parlato oggi con {first}. Ha detto di inoltrare a {city} e di chiamarlo al {phone}.",
+    "Per favore invia i documenti a {first} {last}, {street} {num}, {city}.",
+    "Ho incontrato {first} vicino a {street} {num}. Ho contattato {first2} al {phone}.",
+]
+
+it_templates = [
+    "Polizza vita di {first} {last}, codice fiscale {id}. Residente in {street} {num}, {city}. Telefono: {phone}. Data di nascita: {dob}.",
+    "Verbale di incidente. Conducente responsabile: {first} {last}, targa {num}XYZ{num}. Residente a {city}.",
+    "Il cliente {first} {last} ha richiesto un preventivo per l'assicurazione auto. CF: {id}. Telefono: {phone}.",
+    "Cliente {first} {last}, email {first}.{last}@example.it, ha avviato un bonifico dall'IP {ip}.",
+    "Il paziente {first} {last} è arrivato in clinica. CF: {id}. Battito: 80, pressione: 120/80.",
+    "L'attore {first} {last} ha citato in giudizio Generali. Numero pratica: {num}{num}-{num}.",
+    "Sentenza nella causa {num} - {first} {last} contro UniCredit. Il convenuto è condannato a pagare 50.000 €.",
+    "La nuova carta che termina con {num}{num} è stata spedita in {street} {num}, {city} per {first} {last}.",
+    "Lettera di dimissioni - Il paziente {first} {last} è stato dimesso. Inviare i documenti a: {street} {num}, {city}.",
+    "Ricetta per farmaci cronici consegnata alla paziente {first} {last} con codice fiscale {id}.",
+    "Secondo il regolamento aziendale, è consentito fumare solo nelle aree dedicate.",
+    "Il codice del consumo impone di esporre i prezzi IVA inclusa.",
+    "Il periodo di prova termina a maggio.",
+    "Speriamo di concludere il progetto nei tempi e nel budget previsti.",
+    "Il codice articolo {part_en} è attualmente esaurito.",
+    "Previsto maltempo domani su tutto il paese. Evitare spostamenti non necessari.",
+    "The customer {en_first} {en_last} called about his account. He lives in {en_city}.",
+    "L'indirizzo MAC del dispositivo di {first} è {mac}, connesso dall'IP {ip}.",
+    "Un bonifico verso l'IBAN {iban} è stato disposto da {first}.",
+]
+
+it_longform = [
+    "CONDIZIONI GENERALI DEL CONTRATTO DI LOCAZIONE: tra il locatore, proprietario dell'immobile sito in {street} {num}, {city}; e il conduttore {first} {last}, codice fiscale {id}, interessato a locare l'immobile per 12 mesi. Il canone mensile è fissato in 900 €. Per informazioni contattare il numero {phone}.",
+    "Il diabete di tipo 2 è una malattia metabolica caratterizzata da glicemia elevata. Durante un controllo di routine presso il nostro centro di {city}, il paziente {first} {last} (CF: {id}) ha presentato valori anomali. Il paziente, residente in {street} {num}, è stato informato dei risultati. Per informazioni: {phone}.",
+    "INFORMATIVA PRIVACY: ai sensi del GDPR proteggiamo i suoi dati personali. Quando l'utente {first} {last} visita il nostro sito, registriamo l'indirizzo IP {ip} e la data di accesso. Non cediamo i suoi dati, compreso l'indirizzo in {street} {num}, a terzi. I pagamenti possono essere effettuati sull'IBAN {iban}. Contatto: {phone}.",
+    "Polizza kasko per autoveicoli: la presente polizza copre danni accidentali, furto e incendio secondo le condizioni generali. Il contraente, {first} {last} (CF: {id}), è autorizzato a presentare denuncia di sinistro. Il veicolo assicurato è custodito in {street} {num}, {city}. In caso di sinistro contattare il numero {phone}.",
+]
+
+it_new_domains = [
+    "Curriculum: candidato {first} {last}, laureato all'università. Ex dipendente di TechCorp. Referenze: {first2} {last2}, telefono: {phone}.",
+    "Errore server: 500 Internal Server Error. IP della richiesta: {ip}. Utente connesso: {first}.{last}. Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.",
+    "L'ordine n.{num}{num}{num} è stato spedito. Indirizzo di consegna: {street} {num}, {city}. Destinatario: {first} {last}. Telefono del corriere: {phone}.",
+    "Valutazione dello studente {first} {last} (CF: {id}). I genitori sono pregati di partecipare al colloquio. Indirizzo registrato: {street} {num}, {city}.",
+    "Agenzia delle Entrate: avviso di accertamento 2025. Contribuente: {first} {last}. Codice fiscale: {id}. Pagare entro il {dob}.",
+    "Conferma volo: passeggero {first} {last}, passaporto n. {part_en}. Volo per {en_city}. Data di partenza: {dob}. Contatto di emergenza: {phone}.",
+]
+
+# --- Language lookup tables (added with es/fr/it; templates unchanged) ---
+LANG_DATA = {
+    "he": (he_first_names, he_last_names, he_cities, he_streets, he_implicit, he_edge_cases, he_longform, he_new_domains, he_templates),
+    "en": (en_first_names, en_last_names, en_cities, en_streets, en_implicit, en_edge_cases, en_longform, en_new_domains, en_templates),
+    "de": (de_first_names, de_last_names, de_cities, de_streets, de_implicit, de_edge_cases, de_longform, de_new_domains, de_templates),
+    "es": (es_first_names, es_last_names, es_cities, es_streets, es_implicit, es_edge_cases, es_longform, es_new_domains, es_templates),
+    "fr": (fr_first_names, fr_last_names, fr_cities, fr_streets, fr_implicit, fr_edge_cases, fr_longform, fr_new_domains, fr_templates),
+    "it": (it_first_names, it_last_names, it_cities, it_streets, it_implicit, it_edge_cases, it_longform, it_new_domains, it_templates),
+}
+
+
 def generate_record(lang, mode="normal"):
-    firsts = he_first_names if lang == "he" else en_first_names if lang == "en" else de_first_names
-    lasts = he_last_names if lang == "he" else en_last_names if lang == "en" else de_last_names
-    cities = he_cities if lang == "he" else en_cities if lang == "en" else de_cities
-    streets = he_streets if lang == "he" else en_streets if lang == "en" else de_streets
+    firsts, lasts, cities, streets, _implicit, _edge, _long, _domains, _normal = LANG_DATA[lang]
     
     first = random.choice(firsts)
     last = random.choice(lasts)
@@ -240,15 +478,15 @@ def generate_record(lang, mode="normal"):
     phone = gen_phone(lang)
     
     if mode == "implicit":
-        template_list = he_implicit if lang == "he" else en_implicit if lang == "en" else de_implicit
+        template_list = _implicit
     elif mode == "edge_case":
-        template_list = he_edge_cases if lang == "he" else en_edge_cases if lang == "en" else de_edge_cases
+        template_list = _edge
     elif mode == "longform":
-        template_list = he_longform if lang == "he" else en_longform if lang == "en" else de_longform
+        template_list = _long
     elif mode == "new_domains":
-        template_list = he_new_domains if lang == "he" else en_new_domains if lang == "en" else de_new_domains
+        template_list = _domains
     else:
-        template_list = he_templates if lang == "he" else en_templates if lang == "en" else de_templates
+        template_list = _normal
         
     template = random.choice(template_list)
     
@@ -278,11 +516,15 @@ def generate_record(lang, mode="normal"):
     return text
 
 if __name__ == '__main__':
+    import sys
     data_dir = '/home/yehoshua_sus/Projects/owltable/owlmask-maskbench/data'
     os.makedirs(data_dir, exist_ok=True)
-    
-    langs = ["he", "en", "de"]
-    
+
+    # Pass languages as args to (re)generate selectively, e.g.
+    # `python generate_raw_data.py es fr it` — avoids overwriting the
+    # existing he/en/de files unless explicitly requested.
+    langs = sys.argv[1:] or ["he", "en", "de", "es", "fr", "it"]
+
     for lang in langs:
         out_file_utf8 = os.path.join(data_dir, f'texts-to-mask-{lang}.txt')
         
@@ -298,14 +540,21 @@ if __name__ == '__main__':
         print(f"Generated 10000 records for {lang} (UTF-8) in {out_file_utf8}")
 
     # Generate additional encodings for Hebrew and German to test encoding support
-    # Hebrew ISO-8859-8
-    out_file_he_iso = os.path.join(data_dir, 'texts-to-mask-he-iso8859-8.txt')
-    with open(out_file_he_iso, 'w', encoding='iso8859-8', errors='replace') as f:
-        for i in range(100): f.write(generate_record("he", mode="normal") + "\n\n---\n\n")
-    print(f"Generated 100 records for he (ISO-8859-8) in {out_file_he_iso}")
+    if "he" in langs:
+        out_file_he_iso = os.path.join(data_dir, 'texts-to-mask-he-iso8859-8.txt')
+        with open(out_file_he_iso, 'w', encoding='iso8859-8', errors='replace') as f:
+            for i in range(100): f.write(generate_record("he", mode="normal") + "\n\n---\n\n")
+        print(f"Generated 100 records for he (ISO-8859-8) in {out_file_he_iso}")
 
-    # German ISO-8859-1 (Latin-1)
-    out_file_de_iso = os.path.join(data_dir, 'texts-to-mask-de-iso8859-1.txt')
-    with open(out_file_de_iso, 'w', encoding='iso8859-1', errors='replace') as f:
-        for i in range(100): f.write(generate_record("de", mode="normal") + "\n\n---\n\n")
-    print(f"Generated 100 records for de (ISO-8859-1) in {out_file_de_iso}")
+    if "de" in langs:
+        out_file_de_iso = os.path.join(data_dir, 'texts-to-mask-de-iso8859-1.txt')
+        with open(out_file_de_iso, 'w', encoding='iso8859-1', errors='replace') as f:
+            for i in range(100): f.write(generate_record("de", mode="normal") + "\n\n---\n\n")
+        print(f"Generated 100 records for de (ISO-8859-1) in {out_file_de_iso}")
+
+    # Spanish/French/Italian ISO-8859-1 (Latin-1) legacy-encoding variants
+    for iso_lang in [l for l in ("es", "fr", "it") if l in langs]:
+        out_file_iso = os.path.join(data_dir, f'texts-to-mask-{iso_lang}-iso8859-1.txt')
+        with open(out_file_iso, 'w', encoding='iso8859-1', errors='replace') as f:
+            for i in range(100): f.write(generate_record(iso_lang, mode="normal") + "\n\n---\n\n")
+        print(f"Generated 100 records for {iso_lang} (ISO-8859-1) in {out_file_iso}")
