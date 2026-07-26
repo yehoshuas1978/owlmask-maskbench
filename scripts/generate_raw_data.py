@@ -135,7 +135,7 @@ he_edge_cases = [
     "פרטי התקשרות:\nשם: {first} {last}\nטלפון: {phone}\nת\"ז: {id}", # Multi-line
     "נא לחזור אלי לטלפון 📞{phone} או למייל {first_e}.{last_e}@example.com 📧.", # Emojis
     "<div>שם הלקוח: <strong>{first} {last}</strong></div><p>מספר מזהה: <span>{id}</span></p>", # HTML wrapped
-    "https://api.example.com/update?user={first}%20{last}&tz={id}&phone={phone}", # URL encoded
+    "https://api.example.com/update?user={first_u}%20{last_u}&tz={id}&phone={phone}", # URL encoded
     "[{first} {last}], ({id}), '{phone}' - פרטים שעודכנו הרגע במערכת.", # Punctuation hugging
     "העובד\t{first} {last}\tעם המספר\t{id}\tמבקש אישור.", # Tabs
     "שם: {FIRST} {LAST}!!! מספר: {ID}???", # UPPERCASE and punctuation
@@ -145,7 +145,7 @@ en_edge_cases = [
     "Contact Info:\nName: {first} {last}\nPhone: {phone}\nSSN: {id}", # Multi-line
     "Please call me back at 📞{phone} or email {first_e}.{last_e}@example.com 📧.", # Emojis
     "<div>Customer Name: <strong>{first} {last}</strong></div><p>Identifier: <span>{id}</span></p>", # HTML wrapped
-    "https://api.example.com/update?user={first}%20{last}&ssn={id}&phone={phone}", # URL encoded
+    "https://api.example.com/update?user={first_u}%20{last_u}&ssn={id}&phone={phone}", # URL encoded
     "[{first} {last}], ({id}), '{phone}' - details just updated in the system.", # Punctuation hugging
     "Employee\t{first} {last}\twith SSN\t{id}\trequests approval.", # Tabs
     "NAME: {FIRST} {LAST}!!! NUMBER: {ID}???", # UPPERCASE and punctuation
@@ -155,7 +155,7 @@ de_edge_cases = [
     "Kontaktinfo:\nName: {first} {last}\nTelefon: {phone}\nSteuer-ID: {id}", # Multi-line
     "Bitte rufen Sie mich zurück unter 📞{phone} oder per E-Mail an {first_e}.{last_e}@example.de 📧.", # Emojis
     "<div>Kundenname: <strong>{first} {last}</strong></div><p>Kennung: <span>{id}</span></p>", # HTML wrapped
-    "https://api.example.de/update?user={first}%20{last}&id={id}&phone={phone}", # URL encoded
+    "https://api.example.de/update?user={first_u}%20{last_u}&id={id}&phone={phone}", # URL encoded
     "[{first} {last}], ({id}), '{phone}' - Details soeben im System aktualisiert.", # Punctuation hugging
     "Mitarbeiter\t{first} {last}\tmit Steuer-ID\t{id}\tbittet um Freigabe.", # Tabs
     "NAME: {FIRST} {LAST}!!! NUMMER: {ID}???", # UPPERCASE and punctuation
@@ -314,7 +314,7 @@ es_edge_cases = [
     "Datos de contacto:\nNombre: {first} {last}\nTeléfono: {phone}\nDNI: {id}",
     "Por favor llámame al 📞{phone} o escribe a {first_e}.{last_e}@example.es 📧.",
     "<div>Nombre del cliente: <strong>{first} {last}</strong></div><p>Identificador: <span>{id}</span></p>",
-    "https://api.example.es/update?user={first}%20{last}&dni={id}&phone={phone}",
+    "https://api.example.es/update?user={first_u}%20{last_u}&dni={id}&phone={phone}",
     "[{first} {last}], ({id}), '{phone}' - datos actualizados en el sistema.",
     "Empleado\t{first} {last}\tcon DNI\t{id}\tsolicita aprobación.",
     "NOMBRE: {FIRST} {LAST}!!! NÚMERO: {ID}???",
@@ -372,7 +372,7 @@ fr_edge_cases = [
     "Coordonnées :\nNom : {first} {last}\nTéléphone : {phone}\nNIR : {id}",
     "Merci de me rappeler au 📞{phone} ou par mail à {first_e}.{last_e}@example.fr 📧.",
     "<div>Nom du client : <strong>{first} {last}</strong></div><p>Identifiant : <span>{id}</span></p>",
-    "https://api.example.fr/update?user={first}%20{last}&nir={id}&phone={phone}",
+    "https://api.example.fr/update?user={first_u}%20{last_u}&nir={id}&phone={phone}",
     "[{first} {last}], ({id}), '{phone}' - informations mises à jour dans le système.",
     "Employé\t{first} {last}\tavec le NIR\t{id}\tdemande une validation.",
     "NOM : {FIRST} {LAST}!!! NUMÉRO : {ID}???",
@@ -430,7 +430,7 @@ it_edge_cases = [
     "Dati di contatto:\nNome: {first} {last}\nTelefono: {phone}\nCodice fiscale: {id}",
     "Per favore richiamami al 📞{phone} o scrivi a {first_e}.{last_e}@example.it 📧.",
     "<div>Nome cliente: <strong>{first} {last}</strong></div><p>Identificativo: <span>{id}</span></p>",
-    "https://api.example.it/update?user={first}%20{last}&cf={id}&phone={phone}",
+    "https://api.example.it/update?user={first_u}%20{last_u}&cf={id}&phone={phone}",
     "[{first} {last}], ({id}), '{phone}' - dati appena aggiornati nel sistema.",
     "Dipendente\t{first} {last}\tcon CF\t{id}\trichiede approvazione.",
     "NOME: {FIRST} {LAST}!!! NUMERO: {ID}???",
@@ -555,12 +555,20 @@ def generate_record(lang, mode="normal"):
     # fragment reads as a leak to the L3 scanner (HE-11, 554/10k he records).
     first_e = first.replace(" ", "")
     last_e = last.replace(" ", "")
+    # URL query params must encode EVERY space: a two-word surname
+    # ("בן דוד") left a literal space inside the URL, so the URL ended early
+    # and the trailing name token stayed in clear text — 2 leaks in the he L3
+    # run (2026-07-26), same root cause as the HE-11 email bug.
+    first_u = first.replace(" ", "%20")
+    last_u = last.replace(" ", "%20")
 
     text = template.format(
         first=first,
         last=last,
         first_e=first_e,
         last_e=last_e,
+        first_u=first_u,
+        last_u=last_u,
         FIRST=first.upper(),
         LAST=last.upper(),
         first2=first2,
