@@ -1,5 +1,17 @@
-import random
+import json
 import os
+import random
+import re
+import sys
+from pathlib import Path
+
+# Program rule: synthetic gold values must be produced through the SDK's own
+# validators. The SDK checkout is a sibling of owlmask-maskbench; run this
+# script with owlmask-sdk's .venv interpreter so masking_shared imports.
+_SDK = Path(__file__).resolve().parents[2] / "owlmask-sdk"
+sys.path.insert(0, str(_SDK / "libs" / "shared"))
+from masking_shared.masker.language_recognizers.de import validate_steuer_id  # noqa: E402
+from masking_shared.masker.language_recognizers.he import validate_teudat_zehut  # noqa: E402
 
 # --- Hebrew Data ---
 he_first_names = ["דוד", "משה", "יעקב", "יצחק", "אברהם", "רחל", "שרה", "רבקה", "לאה", "מיכל", "יעל", "נועה", "תמר", "אבי", "יוסי", "חיים", "רועי", "דניאל", "עומר", "עידו"]
@@ -38,10 +50,29 @@ it_cities = ["Roma", "Milano", "Napoli", "Torino", "Palermo", "Genova", "Bologna
 it_streets = ["Via Roma", "Corso Italia", "Via Garibaldi", "Piazza Dante", "Via Verdi", "Viale Europa", "Via Manzoni", "Corso Vittorio Emanuele", "Via Nazionale", "Via Milano"]
 
 # --- Generators ---
-# NOTE (2026-07-24): the es/fr/it national IDs and IBANs are generated
-# checksum-VALID on purpose. A checksum-validating engine correctly refuses
-# invalid look-alikes, so invalid "IDs" in test data produce false leak flags
-# in residual scans (observed with the he Teudat-Zehut values in this dataset).
+# NOTE (2026-07-24): ALL six languages' national IDs and IBANs are generated
+# checksum-VALID on purpose (es/fr/it first, he/en/de extended same day). A
+# checksum-validating engine correctly refuses invalid look-alikes, so invalid
+# "IDs" in test data produce false leak flags in residual scans. Hebrew TZ and
+# German Steuer-IdNr candidates are filtered through the SDK's own validators.
+
+def _he_tz():
+    while True:
+        n = str(random.randint(100000000, 999999999))
+        if validate_teudat_zehut(n):
+            return n
+
+def _en_ssn():
+    while True:
+        area = random.randint(100, 899)
+        if area != 666:
+            return f"{area}-{random.randint(1, 99):02d}-{random.randint(1, 9999):04d}"
+
+def _de_steuer_id():
+    while True:
+        cand = str(random.randint(1, 9)) + "".join(str(random.randint(0, 9)) for _ in range(10))
+        if validate_steuer_id(cand):
+            return cand
 
 def _es_dni():
     n = random.randint(10000000, 99999999)
@@ -65,9 +96,9 @@ def _iban_checked(country, bban):
     return f"{country}{98 - int(num) % 97:02d}{bban}"
 
 def gen_id(lang):
-    if lang == "he": return "".join([str(random.randint(0, 9)) for _ in range(9)])
-    elif lang == "en": return f"{random.randint(100, 999)}-{random.randint(10, 99)}-{random.randint(1000, 9999)}"
-    elif lang == "de": return f"T{random.randint(10000000, 99999999)}"
+    if lang == "he": return _he_tz()
+    elif lang == "en": return _en_ssn()
+    elif lang == "de": return _de_steuer_id()
     elif lang == "es": return _es_dni()
     elif lang == "fr": return _fr_insee()
     elif lang == "it": return _it_cf()
@@ -92,13 +123,17 @@ def gen_iban(lang):
         return _iban_checked("FR", f"{random.randint(10000, 99999)}{random.randint(10000, 99999)}{random.randint(0, 99999999999):011d}{random.randint(10, 99)}")
     if lang == "it":
         return _iban_checked("IT", random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") + f"{random.randint(10000, 99999)}{random.randint(10000, 99999)}{random.randint(0, 999999999999):012d}")
-    prefix = "IL" if lang == "he" else "DE" if lang == "de" else "US"
-    return f"{prefix}{random.randint(10, 99)}{random.randint(100, 999)}{random.randint(100000, 999999)}{random.randint(10, 99)}"
+    if lang == "he":
+        return _iban_checked("IL", f"{random.randint(100, 999)}{random.randint(100, 999)}{random.randint(0, 9999999999999):013d}")
+    if lang == "de":
+        return _iban_checked("DE", f"{random.randint(10000000, 99999999)}{random.randint(0, 9999999999):010d}")
+    # en: the US has no IBAN system — use a MOD-97-valid GB IBAN.
+    return _iban_checked("GB", "".join(random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(4)) + f"{random.randint(0, 999999):06d}{random.randint(0, 99999999):08d}")
 
 # --- Edge Cases (Multi-line, emojis, HTML/URL, punctuation hugging) ---
 he_edge_cases = [
     "פרטי התקשרות:\nשם: {first} {last}\nטלפון: {phone}\nת\"ז: {id}", # Multi-line
-    "נא לחזור אלי לטלפון 📞{phone} או למייל {first}.{last}@example.com 📧.", # Emojis
+    "נא לחזור אלי לטלפון 📞{phone} או למייל {first_e}.{last_e}@example.com 📧.", # Emojis
     "<div>שם הלקוח: <strong>{first} {last}</strong></div><p>מספר מזהה: <span>{id}</span></p>", # HTML wrapped
     "https://api.example.com/update?user={first}%20{last}&tz={id}&phone={phone}", # URL encoded
     "[{first} {last}], ({id}), '{phone}' - פרטים שעודכנו הרגע במערכת.", # Punctuation hugging
@@ -108,7 +143,7 @@ he_edge_cases = [
 
 en_edge_cases = [
     "Contact Info:\nName: {first} {last}\nPhone: {phone}\nSSN: {id}", # Multi-line
-    "Please call me back at 📞{phone} or email {first}.{last}@example.com 📧.", # Emojis
+    "Please call me back at 📞{phone} or email {first_e}.{last_e}@example.com 📧.", # Emojis
     "<div>Customer Name: <strong>{first} {last}</strong></div><p>Identifier: <span>{id}</span></p>", # HTML wrapped
     "https://api.example.com/update?user={first}%20{last}&ssn={id}&phone={phone}", # URL encoded
     "[{first} {last}], ({id}), '{phone}' - details just updated in the system.", # Punctuation hugging
@@ -117,12 +152,12 @@ en_edge_cases = [
 ]
 
 de_edge_cases = [
-    "Kontaktinfo:\nName: {first} {last}\nTelefon: {phone}\nAusweis: {id}", # Multi-line
-    "Bitte rufen Sie mich zurück unter 📞{phone} oder per E-Mail an {first}.{last}@example.de 📧.", # Emojis
+    "Kontaktinfo:\nName: {first} {last}\nTelefon: {phone}\nSteuer-ID: {id}", # Multi-line
+    "Bitte rufen Sie mich zurück unter 📞{phone} oder per E-Mail an {first_e}.{last_e}@example.de 📧.", # Emojis
     "<div>Kundenname: <strong>{first} {last}</strong></div><p>Kennung: <span>{id}</span></p>", # HTML wrapped
     "https://api.example.de/update?user={first}%20{last}&id={id}&phone={phone}", # URL encoded
     "[{first} {last}], ({id}), '{phone}' - Details soeben im System aktualisiert.", # Punctuation hugging
-    "Mitarbeiter\t{first} {last}\tmit Ausweis\t{id}\tbittet um Freigabe.", # Tabs
+    "Mitarbeiter\t{first} {last}\tmit Steuer-ID\t{id}\tbittet um Freigabe.", # Tabs
     "NAME: {FIRST} {LAST}!!! NUMMER: {ID}???", # UPPERCASE and punctuation
 ]
 
@@ -142,7 +177,7 @@ he_templates = [
     "פוליסת ביטוח חיים של {first} {last}, ת\"ז {id}. מתגורר ברחוב {street} {num}, {city}. טלפון: {phone}. תאריך לידה: {dob}.",
     "הודעה על תאונת דרכים. הנהג הפוגע: {first} {last}, ת\"ז {id}, תושב {city}. רכב מ.רישוי {num}{num}{num}.",
     "מבוטח {first} {last} פנה אלינו לקבלת הצעת מחיר לביטוח רכב. רכב מאזדה 3. תעודת זהות: {id}.",
-    "לקוח {first} {last}, אימייל {first}.{last}@example.co.il ביצע העברה בנקאית מכתובת IP {ip}.",
+    "לקוח {first} {last}, אימייל {first_e}.{last_e}@example.co.il ביצע העברה בנקאית מכתובת IP {ip}.",
     "מטופל בשם {first} {last}, הגיע למרפאה. מספר ת\"ז: {id}. דופק: 80, לחץ דם: 120/80.",
     "התובע {first} {last} הגיש תביעה נגד חברת ביטוח. מספר תיק: {num}{num}-{num}.",
     "פסק דין בת\"א {num} - {first} {last} נגד בנק הפועלים. הוחלט כי הנתבע ישלם לתובע סך של 50,000 ש\"ח.",
@@ -175,7 +210,7 @@ en_templates = [
     "Life insurance policy for {first} {last}, SSN {id}. Resides at {num} {street}, {city}. Phone: {phone}. DOB: {dob}.",
     "Car accident report. At-fault driver: {first} {last}, License Plate {num}XYZ{num}. Driver lives in {city}.",
     "Client {first} {last} requested a quote for comprehensive auto insurance. SSN: {id}. Phone: {phone}.",
-    "Client {first} {last}, email {first}.{last}@example.com initiated a wire transfer from IP {ip}.",
+    "Client {first} {last}, email {first_e}.{last_e}@example.com initiated a wire transfer from IP {ip}.",
     "Patient {first} {last} arrived at the clinic. SSN: {id}. Heart rate: 80, Blood pressure: 120/80.",
     "Plaintiff {first} {last} filed a lawsuit against StateFarm for personal injury. Case ID: {num}{num}-{num}.",
     "Court ruling in case {num} - {first} {last} vs. Bank of America. Defendant ordered to pay $50,000.",
@@ -204,16 +239,16 @@ de_implicit = [
 ]
 
 de_templates = [
-    "Lebensversicherungspolice für {first} {last}, Ausweisnummer {id}. Wohnhaft in der {street} {num}, {city}. Telefon: {phone}. Geburtsdatum: {dob}.",
+    "Lebensversicherungspolice für {first} {last}, Steuer-ID {id}. Wohnhaft in der {street} {num}, {city}. Telefon: {phone}. Geburtsdatum: {dob}.",
     "Unfallbericht. Verursacher: {first} {last}, Kennzeichen {num}XYZ{num}. Wohnhaft in {city}.",
-    "Kunde {first} {last} hat ein Angebot für eine Kfz-Versicherung angefordert. Ausweisnummer: {id}. Telefon: {phone}.",
-    "Kunde {first} {last}, E-Mail {first}.{last}@example.de, hat eine Überweisung von der IP-Adresse {ip} veranlasst.",
-    "Patient {first} {last} ist in der Klinik eingetroffen. Ausweisnummer: {id}. Puls: 80, Blutdruck: 120/80.",
+    "Kunde {first} {last} hat ein Angebot für eine Kfz-Versicherung angefordert. Steuer-ID: {id}. Telefon: {phone}.",
+    "Kunde {first} {last}, E-Mail {first_e}.{last_e}@example.de, hat eine Überweisung von der IP-Adresse {ip} veranlasst.",
+    "Patient {first} {last} ist in der Klinik eingetroffen. Steuer-ID: {id}. Puls: 80, Blutdruck: 120/80.",
     "Kläger {first} {last} hat eine Klage gegen die Allianz wegen Personenschadens eingereicht. Aktenzeichen: {num}{num}-{num}.",
     "Gerichtsurteil im Fall {num} - {first} {last} gegen die Deutsche Bank. Der Beklagte wird zur Zahlung von 50.000 € verurteilt.",
     "Neue Kreditkarte mit der Endziffer {num}{num} wurde an {street} {num}, {city} für {first} {last} gesendet.",
     "Entlassungsbericht - Patient {first} {last} wurde entlassen. Dokumente senden an: {street} {num}, {city}.",
-    "Rezept für chronische Medikamente an Patient {first} {last}, Ausweisnummer {id}, ausgehändigt.",
+    "Rezept für chronische Medikamente an Patient {first} {last}, Steuer-ID {id}, ausgehändigt.",
     "Laut Unternehmensrichtlinie ist das Rauchen nur in den dafür vorgesehenen Bereichen gestattet.",
     "Das Verbraucherschutzgesetz verlangt von Unternehmen, Preise inklusive Steuern anzugeben.",
     "Die Schonfrist endet im Mai.",
@@ -241,9 +276,9 @@ en_longform = [
 
 de_longform = [
     "Allgemeine Geschäftsbedingungen der Bank. § 1 Geltungsbereich: Diese Bedingungen gelten für die gesamte Geschäftsverbindung zwischen dem Kunden und der Bank. Wenn der Kunde {first} {last}, wohnhaft in {city}, {street} {num}, eine Transaktion über das Online-Banking-Portal von der IP-Adresse {ip} initiiert, wird eine SMS an {phone} gesendet. Bei Fragen (IBAN: {iban}) wenden Sie sich an den Support.",
-    "Typ-2-Diabetes ist eine Stoffwechselerkrankung, die zu erhöhten Blutzuckerwerten führt. Bei einer Routineuntersuchung in unserer Klinik in {city} wies der Patient {first} {last} (Ausweis: {id}) auffällige Werte auf. Der Patient wurde umgehend informiert und ist für Rückfragen unter {phone} erreichbar. Die Krankenakte wurde aktualisiert.",
+    "Typ-2-Diabetes ist eine Stoffwechselerkrankung, die zu erhöhten Blutzuckerwerten führt. Bei einer Routineuntersuchung in unserer Klinik in {city} wies der Patient {first} {last} (Steuer-ID: {id}) auffällige Werte auf. Der Patient wurde umgehend informiert und ist für Rückfragen unter {phone} erreichbar. Die Krankenakte wurde aktualisiert.",
     "Datenschutzerklärung: Wir nehmen den Schutz Ihrer persönlichen Daten sehr ernst. Wenn der Benutzer {first} {last} unsere Website besucht, protokollieren wir standardmäßig die IP-Adresse {ip} sowie das Datum des Zugriffs ({dob}). Wir geben Ihre Daten, einschließlich der Adresse in der {street} {num}, nicht an Dritte weiter. Kontakt: {phone}.",
-    "Vollkaskoversicherung für Kraftfahrzeuge: Diese Police deckt Unfallschäden, Diebstahl und Brand gemäß den Allgemeinen Versicherungsbedingungen (AKB) ab. Der Hauptversicherungsnehmer, {first} {last} (Ausweisnummer: {id}), ist berechtigt, im Schadensfall Ansprüche geltend zu machen. Das versicherte Fahrzeug ist an der Adresse {street} {num} in {city} gemeldet. Im Schadensfall kontaktieren Sie bitte die Hotline unter {phone}."
+    "Vollkaskoversicherung für Kraftfahrzeuge: Diese Police deckt Unfallschäden, Diebstahl und Brand gemäß den Allgemeinen Versicherungsbedingungen (AKB) ab. Der Hauptversicherungsnehmer, {first} {last} (Steuer-ID: {id}), ist berechtigt, im Schadensfall Ansprüche geltend zu machen. Das versicherte Fahrzeug ist an der Adresse {street} {num} in {city} gemeldet. Im Schadensfall kontaktieren Sie bitte die Hotline unter {phone}."
 ]
 
 # --- New Domains (HR, IT, Retail, Edu, Gov, Travel) ---
@@ -277,7 +312,7 @@ de_new_domains = [
 # --- Spanish Templates ---
 es_edge_cases = [
     "Datos de contacto:\nNombre: {first} {last}\nTeléfono: {phone}\nDNI: {id}",
-    "Por favor llámame al 📞{phone} o escribe a {first}.{last}@example.es 📧.",
+    "Por favor llámame al 📞{phone} o escribe a {first_e}.{last_e}@example.es 📧.",
     "<div>Nombre del cliente: <strong>{first} {last}</strong></div><p>Identificador: <span>{id}</span></p>",
     "https://api.example.es/update?user={first}%20{last}&dni={id}&phone={phone}",
     "[{first} {last}], ({id}), '{phone}' - datos actualizados en el sistema.",
@@ -298,7 +333,7 @@ es_templates = [
     "Póliza de seguro de vida de {first} {last}, DNI {id}. Reside en {street} {num}, {city}. Teléfono: {phone}. Fecha de nacimiento: {dob}.",
     "Parte de accidente. Conductor responsable: {first} {last}, matrícula {num}XYZ{num}. Reside en {city}.",
     "El cliente {first} {last} solicitó un presupuesto para el seguro del coche. DNI: {id}. Teléfono: {phone}.",
-    "Cliente {first} {last}, correo {first}.{last}@example.es, inició una transferencia desde la IP {ip}.",
+    "Cliente {first} {last}, correo {first_e}.{last_e}@example.es, inició una transferencia desde la IP {ip}.",
     "El paciente {first} {last} llegó a la clínica. DNI: {id}. Pulso: 80, tensión: 120/80.",
     "El demandante {first} {last} presentó una demanda contra Mapfre. Número de caso: {num}{num}-{num}.",
     "Sentencia en el caso {num} - {first} {last} contra el Banco Santander. Se condena al pago de 50.000 €.",
@@ -335,7 +370,7 @@ es_new_domains = [
 # --- French Templates ---
 fr_edge_cases = [
     "Coordonnées :\nNom : {first} {last}\nTéléphone : {phone}\nNIR : {id}",
-    "Merci de me rappeler au 📞{phone} ou par mail à {first}.{last}@example.fr 📧.",
+    "Merci de me rappeler au 📞{phone} ou par mail à {first_e}.{last_e}@example.fr 📧.",
     "<div>Nom du client : <strong>{first} {last}</strong></div><p>Identifiant : <span>{id}</span></p>",
     "https://api.example.fr/update?user={first}%20{last}&nir={id}&phone={phone}",
     "[{first} {last}], ({id}), '{phone}' - informations mises à jour dans le système.",
@@ -356,7 +391,7 @@ fr_templates = [
     "Contrat d'assurance-vie de {first} {last}, NIR {id}. Domicilié au {num} {street}, {city}. Téléphone : {phone}. Date de naissance : {dob}.",
     "Constat d'accident. Conducteur responsable : {first} {last}, immatriculation {num}XYZ{num}. Domicilié à {city}.",
     "Le client {first} {last} a demandé un devis d'assurance auto. NIR : {id}. Téléphone : {phone}.",
-    "Client {first} {last}, e-mail {first}.{last}@example.fr, a initié un virement depuis l'IP {ip}.",
+    "Client {first} {last}, e-mail {first_e}.{last_e}@example.fr, a initié un virement depuis l'IP {ip}.",
     "Le patient {first} {last} est arrivé à la clinique. NIR : {id}. Pouls : 80, tension : 120/80.",
     "Le demandeur {first} {last} a déposé plainte contre AXA. Numéro de dossier : {num}{num}-{num}.",
     "Jugement dans l'affaire {num} - {first} {last} contre BNP Paribas. Le défendeur est condamné à verser 50 000 €.",
@@ -393,7 +428,7 @@ fr_new_domains = [
 # --- Italian Templates ---
 it_edge_cases = [
     "Dati di contatto:\nNome: {first} {last}\nTelefono: {phone}\nCodice fiscale: {id}",
-    "Per favore richiamami al 📞{phone} o scrivi a {first}.{last}@example.it 📧.",
+    "Per favore richiamami al 📞{phone} o scrivi a {first_e}.{last_e}@example.it 📧.",
     "<div>Nome cliente: <strong>{first} {last}</strong></div><p>Identificativo: <span>{id}</span></p>",
     "https://api.example.it/update?user={first}%20{last}&cf={id}&phone={phone}",
     "[{first} {last}], ({id}), '{phone}' - dati appena aggiornati nel sistema.",
@@ -414,7 +449,7 @@ it_templates = [
     "Polizza vita di {first} {last}, codice fiscale {id}. Residente in {street} {num}, {city}. Telefono: {phone}. Data di nascita: {dob}.",
     "Verbale di incidente. Conducente responsabile: {first} {last}, targa {num}XYZ{num}. Residente a {city}.",
     "Il cliente {first} {last} ha richiesto un preventivo per l'assicurazione auto. CF: {id}. Telefono: {phone}.",
-    "Cliente {first} {last}, email {first}.{last}@example.it, ha avviato un bonifico dall'IP {ip}.",
+    "Cliente {first} {last}, email {first_e}.{last_e}@example.it, ha avviato un bonifico dall'IP {ip}.",
     "Il paziente {first} {last} è arrivato in clinica. CF: {id}. Battito: 80, pressione: 120/80.",
     "L'attore {first} {last} ha citato in giudizio Generali. Numero pratica: {num}{num}-{num}.",
     "Sentenza nella causa {num} - {first} {last} contro UniCredit. Il convenuto è condannato a pagare 50.000 €.",
@@ -459,24 +494,48 @@ LANG_DATA = {
 }
 
 
+# National-ID entity label planted per language (mirrors the SDK recognizers).
+NATIONAL_ID_TYPE = {
+    "he": "IL_TEUDAT_ZEHUT", "en": "US_SSN", "de": "DE_TAX_ID",
+    "es": "ES_DNI", "fr": "FR_INSEE", "it": "IT_CODICE_FISCALE",
+}
+
+_PASSPORT_WORDS = ("Passport", "passeport", "Reisepass", "pasaporte", "passaporto", "דרכון")
+# Local parts are NOT ASCII-only: Hebrew templates emit "אברהם.פרידמן@example.co.il".
+# The old [A-Za-z0-9._%+-]+ never matched them, so the he manifest ended up with
+# ZERO EMAIL_ADDRESS entries and the L3 scan could not detect a Hebrew email leak
+# at all (HE-12, found 2026-07-26). Match any non-space, non-@ run instead —
+# safe now that local parts are slugged space-free (HE-11).
+_EMAIL_RE = re.compile(r"[^\s@]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
 def generate_record(lang, mode="normal"):
+    """Return (text, planted) where planted lists every injected value that
+    actually appears in the text: {entityType, value, identifying}.
+    identifying=False marks negative traps (part numbers in stock contexts)."""
     firsts, lasts, cities, streets, _implicit, _edge, _long, _domains, _normal = LANG_DATA[lang]
-    
+
     first = random.choice(firsts)
     last = random.choice(lasts)
     first2 = random.choice(firsts)
     last2 = random.choice(lasts)
-    
+
     en_first = random.choice(en_first_names)
     en_last = random.choice(en_last_names)
     en_city_val = random.choice(en_cities)
-    
+
     city = random.choice(cities)
     street = random.choice(streets)
     num = random.randint(1, 99)
     id_val = gen_id(lang)
     phone = gen_phone(lang)
-    
+    dob = gen_dob()
+    ip = gen_ip()
+    mac = gen_mac()
+    iban = gen_iban(lang)
+    part_he = gen_part_num_he()
+    part_en = gen_part_num()
+
     if mode == "implicit":
         template_list = _implicit
     elif mode == "edge_case":
@@ -487,12 +546,21 @@ def generate_record(lang, mode="normal"):
         template_list = _domains
     else:
         template_list = _normal
-        
+
     template = random.choice(template_list)
-    
+
+    # Email local parts must be valid addresses: a two-word surname
+    # ("בן דוד", "De Luca") would otherwise emit "omer.בן דוד@example.co.il"
+    # — a space in the local part is not a legal email, and the resulting
+    # fragment reads as a leak to the L3 scanner (HE-11, 554/10k he records).
+    first_e = first.replace(" ", "")
+    last_e = last.replace(" ", "")
+
     text = template.format(
         first=first,
         last=last,
+        first_e=first_e,
+        last_e=last_e,
         FIRST=first.upper(),
         LAST=last.upper(),
         first2=first2,
@@ -506,17 +574,48 @@ def generate_record(lang, mode="normal"):
         id=id_val,
         ID=id_val,
         phone=phone,
-        dob=gen_dob(),
-        ip=gen_ip(),
-        mac=gen_mac(),
-        iban=gen_iban(lang),
-        part_he=gen_part_num_he(),
-        part_en=gen_part_num()
+        dob=dob,
+        ip=ip,
+        mac=mac,
+        iban=iban,
+        part_he=part_he,
+        part_en=part_en
     )
-    return text
+
+    # Part numbers are negative traps (identical shape to TZ/SSN) except in
+    # passport contexts, where the same value is a real identifier.
+    passport_ctx = any(w in template for w in _PASSPORT_WORDS)
+    candidates = [
+        ("PERSON", first, True), ("PERSON", last, True),
+        ("PERSON", first.upper(), True), ("PERSON", last.upper(), True),
+        ("PERSON", first2, True), ("PERSON", last2, True),
+        ("PERSON", en_first, True), ("PERSON", en_last, True),
+        ("LOCATION", city, True), ("LOCATION", en_city_val, True),
+        ("LOCATION", street, True),
+        (NATIONAL_ID_TYPE[lang], id_val, True),
+        ("PHONE_NUMBER", phone, True),
+        ("DATE_TIME", dob, True),
+        ("IP_ADDRESS", ip, True),
+        ("MAC_ADDRESS", mac, True),
+        ("IBAN_CODE", iban, True),
+        ("PASSPORT" if passport_ctx else "PART_NUMBER", part_he, passport_ctx),
+        ("PASSPORT" if passport_ctx else "PART_NUMBER", part_en, passport_ctx),
+    ]
+    planted = []
+    seen = set()
+    for etype, value, identifying in candidates:
+        if value and value in text and (etype, value) not in seen:
+            seen.add((etype, value))
+            planted.append({"entityType": etype, "value": value,
+                            "identifying": identifying})
+    for m in _EMAIL_RE.findall(text):
+        if ("EMAIL_ADDRESS", m) not in seen:
+            seen.add(("EMAIL_ADDRESS", m))
+            planted.append({"entityType": "EMAIL_ADDRESS", "value": m,
+                            "identifying": True})
+    return text, planted
 
 if __name__ == '__main__':
-    import sys
     data_dir = '/home/yehoshua_sus/Projects/owltable/owlmask-maskbench/data'
     os.makedirs(data_dir, exist_ok=True)
 
@@ -525,36 +624,45 @@ if __name__ == '__main__':
     # existing he/en/de files unless explicitly requested.
     langs = sys.argv[1:] or ["he", "en", "de", "es", "fr", "it"]
 
+    MODE_PLAN = [("normal", 2000), ("implicit", 1000), ("edge_case", 3000),
+                 ("longform", 1000), ("new_domains", 3000)]  # 6 domains * 500
+
     for lang in langs:
         out_file_utf8 = os.path.join(data_dir, f'texts-to-mask-{lang}.txt')
-        
-        # Write UTF-8 version
-        with open(out_file_utf8, 'w', encoding='utf-8') as f:
-            for i in range(2000): f.write(generate_record(lang, mode="normal") + "\n\n---\n\n")
-            for i in range(1000): f.write(generate_record(lang, mode="implicit") + "\n\n---\n\n")
-            for i in range(3000): f.write(generate_record(lang, mode="edge_case") + "\n\n---\n\n")
-            for i in range(1000): f.write(generate_record(lang, mode="longform") + "\n\n---\n\n")
-            # 6 new domains * 500 records each = 3000 total records
-            for i in range(3000): f.write(generate_record(lang, mode="new_domains") + "\n\n---\n\n")
-            
-        print(f"Generated 10000 records for {lang} (UTF-8) in {out_file_utf8}")
+        manifest_file = os.path.join(data_dir, f'texts-to-mask-{lang}.manifest.jsonl')
+
+        # Write UTF-8 version + a sidecar manifest of planted values so leak
+        # scans check exactly what was injected instead of guessing patterns.
+        with open(out_file_utf8, 'w', encoding='utf-8') as f, \
+             open(manifest_file, 'w', encoding='utf-8') as mf:
+            idx = 0
+            for mode, count in MODE_PLAN:
+                for _ in range(count):
+                    text, planted = generate_record(lang, mode=mode)
+                    f.write(text + "\n\n---\n\n")
+                    mf.write(json.dumps({"record": idx, "category": mode,
+                                         "planted": planted},
+                                        ensure_ascii=False) + "\n")
+                    idx += 1
+
+        print(f"Generated {idx} records for {lang} (UTF-8) in {out_file_utf8} + manifest")
 
     # Generate additional encodings for Hebrew and German to test encoding support
     if "he" in langs:
         out_file_he_iso = os.path.join(data_dir, 'texts-to-mask-he-iso8859-8.txt')
         with open(out_file_he_iso, 'w', encoding='iso8859-8', errors='replace') as f:
-            for i in range(100): f.write(generate_record("he", mode="normal") + "\n\n---\n\n")
+            for i in range(100): f.write(generate_record("he", mode="normal")[0] + "\n\n---\n\n")
         print(f"Generated 100 records for he (ISO-8859-8) in {out_file_he_iso}")
 
     if "de" in langs:
         out_file_de_iso = os.path.join(data_dir, 'texts-to-mask-de-iso8859-1.txt')
         with open(out_file_de_iso, 'w', encoding='iso8859-1', errors='replace') as f:
-            for i in range(100): f.write(generate_record("de", mode="normal") + "\n\n---\n\n")
+            for i in range(100): f.write(generate_record("de", mode="normal")[0] + "\n\n---\n\n")
         print(f"Generated 100 records for de (ISO-8859-1) in {out_file_de_iso}")
 
     # Spanish/French/Italian ISO-8859-1 (Latin-1) legacy-encoding variants
     for iso_lang in [l for l in ("es", "fr", "it") if l in langs]:
         out_file_iso = os.path.join(data_dir, f'texts-to-mask-{iso_lang}-iso8859-1.txt')
         with open(out_file_iso, 'w', encoding='iso8859-1', errors='replace') as f:
-            for i in range(100): f.write(generate_record(iso_lang, mode="normal") + "\n\n---\n\n")
+            for i in range(100): f.write(generate_record(iso_lang, mode="normal")[0] + "\n\n---\n\n")
         print(f"Generated 100 records for {iso_lang} (ISO-8859-1) in {out_file_iso}")

@@ -12,13 +12,23 @@ The datasets are stored in `texts-to-mask-{lang}.txt` files within the `data` di
 - **French (`-fr.txt`)** *(added 2026-07-24)*
 - **Italian (`-it.txt`)** *(added 2026-07-24)*
 
-> Note on the 2026-07-24 additions: the Spanish DNI, French NIR/INSEE, and
-> Italian Codice Fiscale values (and es/fr/it IBANs) are generated
-> **checksum-valid**. A checksum-validating masking engine correctly refuses
-> invalid look-alikes, so invalid "IDs" in test data produce false leak flags
-> in residual scans. The original he/en/de identifiers are random-format
-> values (some checksum-invalid) — treat unmasked invalid IDs in those sets
-> as expected precision behavior, not leaks.
+> Note (2026-07-24, all six regenerated): **every** language's national IDs
+> and IBANs are now generated **checksum-valid** (Hebrew Teudat Zehut and
+> German Steuer-IdNr candidates are filtered through the OwlMask SDK's own
+> validators; Spanish DNI, French NIR/INSEE, Italian CF, and all IBANs use
+> exact checksum construction; English SSNs avoid invalid ranges). A
+> checksum-validating masking engine correctly refuses invalid look-alikes,
+> so invalid "IDs" in test data would produce false leak flags in residual
+> scans. The German ID was also switched from the unsupported "Ausweisnummer
+> T########" format to the Steuer-IdNr (`DE_TAX_ID`), the product's certified
+> German national ID.
+>
+> Each UTF-8 set also ships a sidecar manifest
+> (`texts-to-mask-{lang}.manifest.jsonl`): one JSON row per record listing
+> every planted value (`entityType`, `value`, `identifying`). Leak scanners
+> (`owlmask-sdk/tools/scenario_validation/maskbench_scan.py`) use it to check
+> exactly what was injected; `identifying: false` marks negative traps (part
+> numbers in stock contexts) whose survival is correct precision behavior.
 
 To ensure robust evaluation, the dataset is highly diverse. It utilizes randomly generated names, cities, streets, phone numbers, IPs, MAC addresses, IBANs, and national IDs mixed into over 38 structural templates per language.
 
