@@ -593,25 +593,44 @@ def generate_record(lang, mode="normal"):
     # Part numbers are negative traps (identical shape to TZ/SSN) except in
     # passport contexts, where the same value is a real identifier.
     passport_ctx = any(w in template for w in _PASSPORT_WORDS)
+    # Every candidate carries the template slots that could have rendered it.
+    # A value is planted only when (a) one of its slots appears in the template
+    # AND (b) the value is present in the rendered text. The in-text check
+    # alone was the X-12 defect: an UNRENDERED draw that happens to equal
+    # template prose produced a false PII claim — first2=חיים matched the
+    # insurance template's own words `ביטוח חיים` ("life insurance"), so a
+    # correctly readable phrase was scored as a leaked person (5 false LEAKs
+    # in the he L3 [0:1000] slice, 2026-07-27). Slot-gating removes the claim
+    # while keeping real plants: a drawn person named חיים renders via
+    # {first} and still qualifies.
     candidates = [
-        ("PERSON", first, True), ("PERSON", last, True),
-        ("PERSON", first.upper(), True), ("PERSON", last.upper(), True),
-        ("PERSON", first2, True), ("PERSON", last2, True),
-        ("PERSON", en_first, True), ("PERSON", en_last, True),
-        ("LOCATION", city, True), ("LOCATION", en_city_val, True),
-        ("LOCATION", street, True),
-        (NATIONAL_ID_TYPE[lang], id_val, True),
-        ("PHONE_NUMBER", phone, True),
-        ("DATE_TIME", dob, True),
-        ("IP_ADDRESS", ip, True),
-        ("MAC_ADDRESS", mac, True),
-        ("IBAN_CODE", iban, True),
-        ("PASSPORT" if passport_ctx else "PART_NUMBER", part_he, passport_ctx),
-        ("PASSPORT" if passport_ctx else "PART_NUMBER", part_en, passport_ctx),
+        ("PERSON", first, True, ("{first}", "{first_e}", "{first_u}")),
+        ("PERSON", last, True, ("{last}", "{last_e}", "{last_u}")),
+        ("PERSON", first.upper(), True, ("{FIRST}",)),
+        ("PERSON", last.upper(), True, ("{LAST}",)),
+        ("PERSON", first2, True, ("{first2}",)),
+        ("PERSON", last2, True, ("{last2}",)),
+        ("PERSON", en_first, True, ("{en_first}",)),
+        ("PERSON", en_last, True, ("{en_last}",)),
+        ("LOCATION", city, True, ("{city}",)),
+        ("LOCATION", en_city_val, True, ("{en_city}",)),
+        ("LOCATION", street, True, ("{street}",)),
+        (NATIONAL_ID_TYPE[lang], id_val, True, ("{id}", "{ID}")),
+        ("PHONE_NUMBER", phone, True, ("{phone}",)),
+        ("DATE_TIME", dob, True, ("{dob}",)),
+        ("IP_ADDRESS", ip, True, ("{ip}",)),
+        ("MAC_ADDRESS", mac, True, ("{mac}",)),
+        ("IBAN_CODE", iban, True, ("{iban}",)),
+        ("PASSPORT" if passport_ctx else "PART_NUMBER", part_he, passport_ctx,
+         ("{part_he}",)),
+        ("PASSPORT" if passport_ctx else "PART_NUMBER", part_en, passport_ctx,
+         ("{part_en}",)),
     ]
     planted = []
     seen = set()
-    for etype, value, identifying in candidates:
+    for etype, value, identifying, slots in candidates:
+        if not any(s in template for s in slots):
+            continue
         if value and value in text and (etype, value) not in seen:
             seen.add((etype, value))
             planted.append({"entityType": etype, "value": value,

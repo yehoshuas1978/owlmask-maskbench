@@ -15,6 +15,13 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class OpenAiCompatibleJudge implements JudgeProvider {
 
+    /**
+     * Identity of the prompt contract this judge speaks. Bumped whenever the
+     * prompt or the expected verdict vocabulary changes, so a stored verdict can
+     * be told apart from one produced by a different prompt.
+     */
+    public static final String PROMPT_VERSION = "maskbench-judge-v1";
+
     private final JudgeConfig config;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -120,6 +127,7 @@ public class OpenAiCompatibleJudge implements JudgeProvider {
             completionTokens = usageNode.path("completion_tokens").asInt(0);
         }
         
-        return new JudgeResult(content, promptTokens, completionTokens);
+        return new JudgeResult(content, promptTokens, completionTokens,
+                config.model(), config.temperature(), PROMPT_VERSION);
     }
 }
