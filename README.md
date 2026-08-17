@@ -1,118 +1,60 @@
-# owlmask-maskbench
+# owlmask-maskbench — RETIRED 2026-08-16
 
-Standalone Java 21 command-line application that judges supplied original/masked
-text pairs using deterministic evaluation and (eventually) an LLM review cascade.
+> **This repository is an archive. Nothing here is built, tested, or called.**
+> Do not add code to it. Do not read its corpus as current.
 
-## Status — read before trusting a report
+## Where the live things went
 
-| Command | State |
+| What | Now lives at |
 |---|---|
-| `benchmark-pairs` | **Working.** Reads the pairs file, evaluates every pair, writes real counts, and exits non-zero on failures. |
-| `judge-pairs` | **Not wired.** Refuses with exit 2. Until 2026-08-03 it wrote a hardcoded `{"pass":1,"fail":0}` report *without reading its input* — discard any report an earlier build produced. |
-| `explain` | Working (prints command help). |
+| The six-language corpus (`texts-to-mask-*`) | `owlmask-sdk/corpus/` |
+| `scripts/generate_raw_data.py` | `owlmask-sdk/tools/corpus/generate_raw_data.py` |
+| `scripts/repair_manifests.py` | `owlmask-sdk/tools/corpus/repair_manifests.py` |
+| The masking acceptance gate | `owlmask-sdk/tests/masking_api/test_maskbench_acceptance.py` |
+| The judged certification lane | `owlmask-sdk/tools/scenario_validation/maskbench_scan.py` |
 
-The LLM judge lane used by the actual language-certification runs lives in
-`owlmask-sdk` (`tools/scenario_validation/` plus the Claude/Gemini judges), not
-here.
+**The copies under `data/` and `scripts/` in this repo are frozen duplicates.**
+They were correct at commit `e7e2897` and will not be updated again. Edit the
+`owlmask-sdk` copies; a change made here reaches nothing.
 
-## Building
+## Why the Java CLI was retired
+
+The CLI (`benchmark-pairs`, `judge-pairs`, `explain`) was deleted on 2026-08-16
+after an audit found it had **zero callers anywhere in the workspace**:
+
+- not a module in the root reactor `pom.xml`
+- no Maven dependency on the `owlmask-maskbench` artifact
+- no Java code in `owlmask-code`, `owlmask-llm`, `owlmask-share`, or
+  `owltable-app` referencing its classes
+- no CI outside this repo built or ran it; its own `verify.yml` only tested itself
+- `judge-pairs`, the LLM lane and its whole reason to exist, was never wired —
+  it refused with exit 2
+
+It was a second implementation, in a second language, of judging that
+`owlmask-sdk` already does in Python — and the Python lane is the one that
+produced every certification result on record. Keeping a fixed-but-uncalled
+judge in the tree is a hazard: the next reader assumes it is the certification
+path. It is not, and never was.
+
+Deeper history, including the 2026-08-03 repair of `judge-pairs` (which had been
+writing a hardcoded `{"pass":1,"fail":0}` **without reading its input**), is in
+`owlmask-share/documentation/plan/improvements/owlmask-maskbench.md`. **Discard
+any maskbench report produced before 2026-08-03.**
+
+## What this repo is still good for
+
+Its git history is the only record of how the corpus was built and repaired. In
+particular `data/manifests-pre-x12-backup/` and `data/manifests-repaired-x12/`
+are the before/after of the X-12 manifest repair, cited by
+`FREETEXT_MASKING_FIX_LEDGER.md` and `LANGUAGE_SUPPORT_RUN_HISTORY.md`. Those two
+directories were **not** carried into `owlmask-sdk`, so this archive is the only
+place they exist.
+
+Full contents remain recoverable at any time:
 
 ```bash
-./mvnw clean verify
+git clone https://github.com/yehoshuas1978/owlmask-maskbench.git
 ```
 
-## Running
-
-```bash
-java -jar target/owlmask-maskbench-1.0.0-SNAPSHOT.jar --help
-# or, after building:
-./run-maskbench.sh --help
-```
-
-### End-to-end example
-
-Against the bundled sample dataset:
-
-```console
-$ java -jar target/owlmask-maskbench-1.0.0-SNAPSHOT.jar benchmark-pairs \
-    --pairs data/example-dataset.jsonl --format jsonl --report-dir build/reports
-benchmark-pairs: 10 pair(s), 10 passed, 0 failed
-NOTE: no pair carried `entities` spans, so leak detection did not run. Only
-`expectedPreserved` was checked — a passing result here is NOT evidence that
-nothing leaked.
-Reports written to build/reports
-$ echo $?
-0
-```
-
-**Read that NOTE.** `data/example-dataset.jsonl` carries only `expectedPreserved`,
-so this run proves that masking did not destroy the phrases that had to survive —
-it proves nothing about whether PII leaked. Leak detection needs `entities`
-spans.
-
-With spans, the evaluator has something to look for:
-
-```console
-$ cat pairs.jsonl
-{"id":"leak-spans","locale":"en-US","domain":"insurance","dataClassification":"synthetic",
- "text":"Claim for John Smith.","maskedText":"Claim for John Smith.",
- "entities":[{"entityType":"PERSON","start":10,"end":20}],"expectedPreserved":[]}
-{"id":"clean-spans","locale":"en-US","domain":"insurance","dataClassification":"synthetic",
- "text":"Claim for John Smith.","maskedText":"Claim for [PERSON].",
- "entities":[{"entityType":"PERSON","start":10,"end":20}],"expectedPreserved":["Claim for"]}
-
-$ java -jar target/owlmask-maskbench-1.0.0-SNAPSHOT.jar benchmark-pairs \
-    --pairs pairs.jsonl --format jsonl --report-dir build/reports
-FAIL leak-spans: Entity 'John Smith' was not fully removed
-benchmark-pairs: 2 pair(s), 1 passed, 1 failed
-Reports written to build/reports
-$ echo $?
-1
-```
-
-Failure detail goes to **stderr** and carries the pair id plus the value that
-survived; the report files under `--report-dir` carry counts only, so a report
-can be attached to a ticket without leaking the value that failed to mask.
-
-### Exit codes
-
-| Code | Meaning |
-|---|---|
-| `0` | Every pair passed |
-| `1` | The run completed and found failing pairs — use this as the CI gate |
-| `2` | The run could not happen: bad `--format`, unreadable `--pairs`, malformed rows, or an empty pairs file |
-
-An empty or unreadable input is **exit 2 with no report written**, never a clean
-pass.
-
-### Input format
-
-One JSON object per line (`--format jsonl`) or a CSV with the same columns
-(`--format csv`):
-
-| Field | Required | Meaning |
-|---|---|---|
-| `id` | yes | Unique within the file; duplicates are rejected |
-| `text` | yes | The original text |
-| `maskedText` | yes | The masking output being judged |
-| `entities` | no | `{entityType, start, end, riskClass}` spans into `text`. **Leak detection runs only on pairs that have these.** |
-| `expectedPreserved` | no | Substrings that must survive masking (clinical terms, legal boilerplate) |
-| `locale`, `domain`, `dataClassification` | no | Metadata |
-
-Limits: 10 MiB total, 1 MiB per row, 10,000 pairs, strict UTF-8.
-
-## Layout
-
-- [`config/`](config/) — judge cascade configuration
-- [`data/`](data/) — sample dataset plus the `texts-to-mask-{en,he,de,es,fr,it}`
-  certification corpora (10,000 records each). `owlmask-sdk`'s LS-05 acceptance
-  gate pins a stratified slice of these; see that repo's
-  `scripts/refresh_maskbench_slice.py`.
-
-## Documentation
-
-Usage examples and judge configuration are documented in the OwlMask hub
-(links resolve in the workspace checkout):
-
-- [MaskBench examples](../owlmask-share/documentation/current/maskbench/EXAMPLES.md)
-- [Judge configuration](../owlmask-share/documentation/current/maskbench/JUDGE_CONFIG.md)
+The Java sources are in the history at `e7e2897`; recover with
+`git show e7e2897:pom.xml` or `git checkout e7e2897 -- src/`.
